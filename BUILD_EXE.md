@@ -1,4 +1,4 @@
-# Building Space Pro EQ into an .exe
+# Building TanchjImport into an .exe
 
 Run every command in **PowerShell**. `$py` is your real Python:
 
@@ -9,12 +9,11 @@ $py = "C:\Users\artet\AppData\Local\Python\pythoncore-3.14-64\python.exe"
 ## 1. Install the dependencies
 
 ```powershell
-& $py -m pip install hidapi pystray pillow pyinstaller
+& $py -m pip install PySide6 hidapi pyinstaller
 ```
 
-- `hidapi` — talks to the DAC (already installed)
-- `pystray` — the system tray icon
-- `pillow` — draws the tray icon image
+- `PySide6` — the Qt UI, graph rendering and tray icon
+- `hidapi` — talks to the DAC
 - `pyinstaller` — makes the .exe
 
 ## 2. Test it as a script first
@@ -22,17 +21,17 @@ $py = "C:\Users\artet\AppData\Local\Python\pythoncore-3.14-64\python.exe"
 Always confirm it runs before freezing it:
 
 ```powershell
-& $py C:\Users\artet\Downloads\space_pro_eq.py
+& $py tanchjimport.py
 ```
 
-Add a preset, apply it, close the window (it should vanish to the tray),
-and reopen it from the tray icon. If all that works, build the exe.
+Import a preset, drag a band on the graph, close the window (it should
+vanish to the tray), and reopen it from the tray icon. If all that works,
+build the exe.
 
 ## 3. Build the .exe
 
 ```powershell
-cd C:\Users\artet\Downloads
-& $py -m PyInstaller --onefile --noconsole --name "SpaceProEQ" space_pro_eq.py
+& $py -m PyInstaller --onefile --noconsole --name "TanchjImport" tanchjimport.py
 ```
 
 What the flags do:
@@ -41,33 +40,34 @@ What the flags do:
 - `--noconsole` — no black terminal window behind the GUI
 - `--name` — what the .exe is called
 
-The result lands at:
+The result lands in `dist\TanchjImport.exe`. Move it anywhere you like —
+it needs no Python installed to run. The `build` folder and the `.spec`
+file are just leftovers; you can delete them.
 
-```
-C:\Users\artet\Downloads\dist\SpaceProEQ.exe
-```
-
-Move that anywhere you like — Desktop, Program Files, wherever. It needs
-no Python installed to run. The `build` folder and `SpaceProEQ.spec` file
-are just leftovers; you can delete them.
+PySide6 builds are considerably larger than the old customtkinter ones —
+expect tens of megabytes. `--onefile` also makes startup slower, since the
+whole thing unpacks to a temp folder on each launch. Dropping `--onefile`
+gives you a folder that starts much faster.
 
 ## 4. Turn on autostart
 
-Run the .exe, tick **Start with Windows (hidden in tray)**, done.
+Run the .exe, tick **Start with Windows**, done.
 
 Important: tick this **after** moving the .exe to its final location. The
 setting records the exact path, so if you move the .exe afterwards you
 need to untick and re-tick it.
 
-At login the app starts straight into the tray with no window.
+At login the app starts straight into the tray with no window (it passes
+`--tray` to itself).
 
-## Where presets live
+## Where presets and profiles live
 
 ```
 %APPDATA%\SpaceProEQ\presets.json
+%APPDATA%\SpaceProEQ\profiles.json
 ```
 
-Back that file up, or copy it to another PC, to carry your presets over.
+Back those up, or copy them to another PC, to carry your setup over.
 
 ## Known annoyances
 
@@ -77,8 +77,8 @@ cost money; for a personal tool this is normal.
 
 **Antivirus false positives** happen with PyInstaller one-file builds
 fairly often — the self-extracting stub looks odd to heuristics. If your
-AV quarantines it, add an exclusion. Dropping `--onefile` (producing a
-folder instead) usually avoids this if it becomes a problem.
+AV quarantines it, add an exclusion. Dropping `--onefile` usually avoids
+this if it becomes a problem.
 
 **Rebuilding**: if you change the .py, just re-run the PyInstaller
 command. Untick and re-tick autostart if the .exe path changed.
