@@ -8,7 +8,9 @@ The official app makes you dial in all ten bands by hand, and hides most of what
 
 ![TanchjImport](docs/screenshot.png)
 
-*Band 1 is a low shelf — a filter type the official app won't let you pick.*
+*Band 1 is a low shelf and band 4 a high shelf — filter types the official app
+won't let you pick. The dashed orange line is the loaded preset, kept on screen
+as a reference while you edit.*
 
 > Not affiliated with Tanchjim. Use at your own risk.
 
