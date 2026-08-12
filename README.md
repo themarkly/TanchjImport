@@ -38,7 +38,11 @@ And one negative result worth recording: **channel balance is not implemented he
 
 ## Install
 
-Run from source:
+Download `TanchjImport.exe` from [Releases](../../releases/latest) and run it.
+Nothing else needed. It's a big download (~47 MB) because the Qt runtime ships
+inside it.
+
+Or run from source:
 
 ```powershell
 pip install PySide6 hidapi
