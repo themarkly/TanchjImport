@@ -6,6 +6,10 @@ Import AutoEQ / Wavelet parametric EQ files, edit the ten bands by dragging them
 
 The official app makes you dial in all ten bands by hand, and hides most of what the firmware can actually do. This doesn't.
 
+![TanchjImport](docs/screenshot.png)
+
+*Band 1 is a low shelf — a filter type the official app won't let you pick.*
+
 > Not affiliated with Tanchjim. Use at your own risk.
 
 ---
