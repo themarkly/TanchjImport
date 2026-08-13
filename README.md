@@ -98,7 +98,7 @@ Every command shares the shape `4B <dir> <group> <len>`, where `dir` is `0x01` t
 | Offset | Field | Encoding |
 |---|---|---|
 | `[5]` | Band index | 0–9 |
-| `[8:28]` | Coefficient blob | **Ignored by firmware** — see below |
+| `[8:28]` | Coefficient blob | **Stored but never read by the firmware** — see below |
 | `[28:30]` | Frequency | uint16 LE, raw Hz |
 | `[30:32]` | Q | uint16 LE, value ÷ 256 |
 | `[32:34]` | Gain | int16 LE, value ÷ 256 dB |
@@ -132,6 +132,36 @@ Gain is ignored for off, low pass, high pass and band pass. Only peaking was eve
 
 Write order used by the official app: 10× band set → band commit → preamp → preamp commit → save.
 
+When reading, check both the group byte `[2]` **and**, for band reads, the band
+index `[5]` before trusting a reply. Replies can arrive after you have moved on
+to the next request, and a reply for band 0 will otherwise happily masquerade as
+band 1.
+
+### Device info and volume
+
+| Command | Returns |
+|---|---|
+| `4B 80 0C 00` | **Firmware version**, ASCII from `[4]`. Reads `31 2E 31` = `"1.1"` here |
+| `4B 80 85 00` | **Current volume** in byte `[4]`. Observed range 0–60 |
+| `4B 80 0E 00` | 4-byte id, constant. Serial or build number, unconfirmed |
+
+Volume tracks the system volume slider live, so polling `0x85` gives you a
+readout. It is not a percentage — the top of the Windows slider reads 60.
+
+### The device never speaks first
+
+The Space Pro is **strictly request/response**. It sends nothing unprompted:
+not on volume change, not on setting change, not on a timer. Verified by
+holding the device open for 45 seconds sending nothing at all while the volume
+was changed from 60 to 27 — zero reports arrived. Anything live has to be
+polled.
+
+A warning for anyone taking captures: on Windows, HID input reports are
+delivered to **every** open handle on the device. If the official app is running
+while you capture, its poll replies land in your read queue and look exactly
+like unsolicited device pushes. They are not. Close it before drawing
+conclusions — this cost me an evening.
+
 ### Hardware settings
 
 These live in their own command groups and are completely independent of the EQ — writing settings never disturbs the bands, and applying an EQ never disturbs the settings.
@@ -152,15 +182,49 @@ Each is read back with `4B 80 <group> <len>`. Note the reply layout is not unifo
 
 Bytes `[8:28]` carry what look like biquad filter coefficients, and they change wildly with every parameter tweak — which sent me down a long rabbit hole trying to match them against the RBJ audio EQ cookbook at various sample rates. Nothing fit.
 
-It turned out not to matter: **zeroing all 20 bytes and sending only frequency, Q, gain and type applies the EQ correctly**, and the official app then displays the new settings. The firmware computes its own coefficients; the blob is app-side bookkeeping.
+It turned out not to matter: **zeroing all 20 bytes and sending only frequency, Q, gain and type applies the EQ correctly**, and the official app then displays the new settings.
+
+The field has since been pinned down exactly. It is **passive storage the firmware
+round-trips and never reads**:
+
+- Write zeros → zeros read back. If the firmware derived coefficients itself it
+  would have replaced them.
+- Let the official app write an EQ → its real coefficients read back.
+- Write a hand-made identity biquad → it reads back byte-for-byte identical. No
+  validation, no recomputation, no clearing.
+
+So the device stores whatever you put there and computes its own filters from
+frequency, Q, gain and type regardless. Sending zeros is safe.
 
 The frequency was never encoded in there at all — it's the plain uint16 at `[28:30]`, in raw Hz.
+
+**Structure, for anyone who wants to finish the job.** 20 bytes is exactly
+5 × 4-byte values, matching a biquad's `b0, b1, b2, a1, a2`. Bands set to 0 dB
+all begin `00 00 00 40` — float32 `2.0` — while a −10 dB band begins
+`66 9B E3 3F` = `1.7782`, which is `10^(10/40)`, the shape of a peaking filter's
+`A` term. Plain little-endian float32 does not decode the remaining groups
+cleanly, so the encoding is mixed or non-standard.
 
 ### Verification
 
 - Frequency: 14/14 labeled test points (200 Hz – 20 kHz) plus all 10 factory band defaults (31–16000 Hz)
 - Q: typed values 1–5 → exactly 256/512/768/1024/1280; factory default 181 = 0.707
 - Gain: ±10 through ±6 dB in 1 dB steps, exact, no rounding error
+- Command surface: every group `0x00`–`0xFF` swept at seven different length
+  bytes, with replies validated against the requested group. Exactly **16
+  groups** answer. Nothing is hidden behind an unusual length.
+
+### The complete readable surface
+
+`0x00`, `0x02`, `0x03`, `0x09`, `0x0C`, `0x0D`, `0x0E`, `0x11`, `0x16`, `0x18`,
+`0x19`, `0x1A`, `0x1D`, `0x1E`, `0x32`, `0x85`.
+
+`0x0D`, `0x1A` and `0x00` at longer lengths return blobs containing
+`0x4800xxxx`-range addresses and 4-char ASCII tags such as `CPU` and `SPV` —
+what an RTOS task or module table looks like. They are **completely static**:
+unchanged across 25 seconds of polling under load, and unchanged across EQ
+changes. They are not sensors and not an EQ representation. In particular
+**there is no temperature reading anywhere on the device.**
 
 ---
 
@@ -175,10 +239,15 @@ Group `0x16` looks like channel balance, and an earlier version of this app impl
 - **Preamp is whole dB only** — a device restriction. `-5.9 dB` is sent as `-6 dB`.
 - **±12 dB gain clamp is a guess.** Captures only ever proved ±10 dB.
 - **Group `0x16` (channel balance) is mis-decoded and dangerous.** See above.
-- **Group `0x85` is undecoded.** The official app polls it and gets `0x39` back.
+- **Groups `0x18` and `0x1E` are unidentified.** Both return a single `01`, the
+  same shape as the known toggles like `0x19` and `0x32`, so they are probably
+  settings. Identifying them needs writes, which I have not risked.
 - **`[36:38]` is unexplained.** Varies by context with no observed audible effect.
 - **`4B 01 01 00`** is assumed to be save/persist; not conclusively confirmed.
-- Tested on **one unit, one firmware version, Windows only.** Reports from other setups welcome.
+- **The coefficient encoding in `[8:28]` is only half solved.** See above.
+- Tested on **one unit, Windows only, firmware 1.1** (read it yourself with
+  `4B 80 0C 00`). Reports from other units and firmware versions welcome —
+  please include your version.
 
 ## Contributing
 

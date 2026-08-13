@@ -21,7 +21,8 @@ dir 0x01 = write, 0x80 = read.
         [30:32] Q            uint16 LE, value/256
         [32:34] gain         int16  LE, value/256 dB
         [34:36] filter type  uint16 LE
-        [8:28]  coefficient blob - ignored by firmware, we send zeros
+        [8:28]  coefficient blob - stored verbatim but never read by the
+                firmware, so we send zeros
     4B 01 0A 04 00 00 FF FF   commit bands
     4B 01 03 02 00 <int8 dB>  master preamp - value is byte[5]
     4B 01 04 00               commit
@@ -43,8 +44,20 @@ dir 0x01 = write, 0x80 = read.
   wrong and writing it produced a dangerous volume jump. Do not add it
   back without re-verifying against a fresh capture.
 
-  Undecoded: group 0x85 (polled by the official app, replies 0x39) and
-  the [36:38] field in band packets.
+  Device info (read only)
+    4B 80 0C 00              firmware version, ASCII from [4] - "1.1" here
+    4B 80 85 00              current volume in [4], range 0-60
+    4B 80 0E 00              constant 4-byte id, serial or build number
+
+  The device never speaks first. It is strictly request/response - nothing
+  is pushed on volume change, setting change or a timer. Poll for live
+  values. Note that on Windows HID input reports reach every open handle,
+  so the official app's polling looks like device pushes if it is running
+  while you capture.
+
+  Undecoded: groups 0x18 and 0x1E (single 01, probably toggles) and the
+  [36:38] field in band packets. Groups 0x0D, 0x0E and 0x1A are static
+  firmware tables, not sensors - there is no temperature reading.
 
 Requires: PySide6, hidapi
 
